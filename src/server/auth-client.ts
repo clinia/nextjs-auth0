@@ -353,10 +353,11 @@ export class AuthClient {
 
     const url = new URL(authorizationServerMetadata.end_session_endpoint)
     url.searchParams.set("client_id", this.clientMetadata.client_id)
-    url.searchParams.set("post_logout_redirect_uri", returnTo)
 
-    if (session?.internal.sid) {
+    if (session?.internal.sid && session.tokenSet.idToken) {
+      url.searchParams.set("post_logout_redirect_uri", returnTo)
       url.searchParams.set("logout_hint", session.internal.sid)
+      url.searchParams.set("id_token_hint", session.tokenSet.idToken)
     }
 
     const res = NextResponse.redirect(url)
@@ -454,6 +455,7 @@ export class AuthClient {
       tokenSet: {
         accessToken: oidcRes.access_token,
         refreshToken: oidcRes.refresh_token,
+        idToken: oidcRes.id_token,
         expiresAt: Math.floor(Date.now() / 1000) + Number(oidcRes.expires_in),
       },
       internal: {
@@ -641,7 +643,7 @@ export class AuthClient {
       const accessTokenExpiresAt =
         Math.floor(Date.now() / 1000) + Number(oauthRes.expires_in)
 
-      let updatedTokenSet = {
+      let updatedTokenSet: TokenSet = {
         ...tokenSet, // contains the existing `iat` claim to maintain the session lifetime
         accessToken: oauthRes.access_token,
         expiresAt: accessTokenExpiresAt,
@@ -653,6 +655,11 @@ export class AuthClient {
       } else {
         // we did not get a refresh token back, keep the current long-lived refresh token around
         updatedTokenSet.refreshToken = tokenSet.refreshToken
+      }
+
+      if (oauthRes.id_token) {
+        // update the ID token if we received a new one
+        updatedTokenSet.idToken = oauthRes.id_token
       }
 
       return [null, updatedTokenSet]
